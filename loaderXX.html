@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NATO İnteraktif Harita</title>
+
+  <!-- Leaflet CSS -->
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
+  <style>
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    #bottom-bar {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      height: 1.2rem;
+      background-color: #262626;
+      z-index: 1000;
+    }
+
+    .leaflet-popup-content {
+      font-size: 16px;
+      font-weight: bold;
+      padding: 12px;
+      max-width: 380px;
+      min-width: 230px;
+      color: white;
+      line-height: 1.5;
+      overflow-x: hidden;
+      overflow-y: auto;
+      text-align: center;
+    }
+
+    .leaflet-popup-content-wrapper {
+      border: 3px solid #986165;
+      border-radius: 10px;
+      background-color: #3e3d3d;
+    }
+
+    .popup-image {
+      width: 100%;
+      height: auto;
+      max-width: 300px;
+      object-fit: cover;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 600px) {
+      .leaflet-popup-content {
+        font-size: 12px !important;
+        width: 90% !important;
+        max-height: 80vh !important;
+        padding: 10px;
+      }
+
+      .popup-image {
+        max-width: 100%;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div id="map"></div>
+  <div id="bottom-bar"></div>
+
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
+
+  <script>
+    var map = L.map('map').setView([41, 28], 3);
+
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
+      attribution: '© OpenStreetMap, © CartoDB',
+      maxZoom: 19
+    }).addTo(map);
+
+    var selectedStyle = { 
+      color: "#dcae0f",
+      weight: 2,
+      fillColor: "#282828",
+      fillOpacity: 0.6
+    };
+
+    var defaultStyle = { 
+      color: "#b47c80",
+      weight: 1,
+      fillColor: "#282828",
+      fillOpacity: 0.6
+    };
+
+    var selectedLayer = null;
+
+    fetch('data.geojson')
+      .then(response => response.json())
+      .then(data => {
+        data.features.forEach(feature => {
+          var countryName = feature.properties.ÜLKE;
+          var description = feature.properties.AÇIKLAMA;
+          var imageUrl = feature.properties.RESİM;
+          var date = feature.properties.TARİH;
+
+          if (!countryName) return;
+
+          // Ülke adı da dahil edilen açıklama HTML
+          var descriptionHTML = `<b>Ülke:</b> ${countryName}<br>`;
+               var tarih = `<b>Tarih:</b> ${date}<br>`;
+          descriptionHTML += description ? `<b>Açıklama:</b> ${description}<br>` : '';
+                    descriptionHTML += date ? `<b>Tarih:</b> ${date}<br>` : ''; // Tarih bilgisi eklendi
+
+          var popupContent = `          
+            ${descriptionHTML}
+            ${imageUrl ? `<img src="${imageUrl}" class="popup-image" alt="Resim">` : ''}          
+          `;
+
+          var countryLayer = L.geoJSON(feature.geometry, {
+            style: defaultStyle
+          }).bindTooltip(countryName, {
+            permanent: true,
+            direction: 'center',
+            className: 'tooltip-style',
+            opacity: 0.7
+          }).bindPopup(popupContent);  // Pop-up bağlama
+
+          // Rusya için tooltip'i yüzdesel olarak sola kaydırma
+          countryLayer.on('tooltipopen', function () {
+            if (countryName === 'RUSYA') {
+              var tooltip = countryLayer.getTooltip();
+              // Tooltip'i yüzdesel olarak konumlandırma
+              var tooltipElement = tooltip.getElement();
+              var mapWidth = map.getSize().x;
+              var mapHeight = map.getSize().y;
+
+              // Kaydırma oranlarını yüzdesel olarak hesaplama
+              tooltipElement.style.left = (mapWidth * -0.05) + 'px'; // %5 sola kaydırma
+              tooltipElement.style.top = (mapHeight * -0.15) + 'px'; // %15 yukarı kaydırma
+            }
+          });
+
+          // Ülkeye tıklayınca popup'ı açmak için
+          countryLayer.on('click', function() {
+            if (selectedLayer) {
+              selectedLayer.setStyle(defaultStyle);
+            }
+            countryLayer.setStyle(selectedStyle);
+            selectedLayer = countryLayer;
+            countryLayer.openPopup();  // Popup açma
+          });
+
+          countryLayer.addTo(map);
+        });
+      })
+      .catch(error => console.error("Ülke verisi yüklenirken hata oluştu:", error));
+  </script>
+</body>
+</html>
