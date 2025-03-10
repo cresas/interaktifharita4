@@ -2,192 +2,164 @@
 <html lang="tr">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
- <title>NATO İnteraktif Harita</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>NATO İnteraktif Harita</title>
+
   <!-- Leaflet CSS -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+
   <style>
-    body, html { margin: 0; padding: 0; }
-    #map { width: 100%; height: 100vh; }
+    body, html {
+      margin: 0;
+      padding: 0;
+      height: 100%;
+    }
+
+    #map {
+      width: 100%;
+      height: 100%;
+    }
+
+    #bottom-bar {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      height: 1.2rem;
+      background-color: #262626;
+      z-index: 1000;
+    }
+
+    .leaflet-popup-content {
+      font-size: 16px;
+      font-weight: bold;
+      padding: 12px;
+      max-width: 380px;
+      min-width: 230px;
+      color: white;
+      line-height: 1.5;
+      overflow-x: hidden;
+      overflow-y: auto;
+      text-align: center;
+    }
+
+    .leaflet-popup-content-wrapper {
+      border: 3px solid #986165;
+      border-radius: 10px;
+      background-color: #3e3d3d;
+    }
+
+    .popup-image {
+      width: 100%;
+      height: auto;
+      max-width: 300px;
+      object-fit: cover;
+      margin-top: 10px;
+    }
+
+    @media (max-width: 600px) {
+      .leaflet-popup-content {
+        font-size: 12px !important;
+        width: 90% !important;
+        max-height: 80vh !important;
+        padding: 10px;
+      }
+
+      .popup-image {
+        max-width: 100%;
+      }
+    }
   </style>
 </head>
 <body>
   <div id="map"></div>
+  <div id="bottom-bar"></div>
 
-  <!-- Leaflet JS -->
   <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <!-- Terraformer kütüphaneleri: ArcGIS JSON'u GeoJSON'a dönüştürmek için -->
-  <script src="https://unpkg.com/terraformer@1.0.12/dist/terraformer.min.js"></script>
-  <script src="https://unpkg.com/terraformer-arcgis-parser@1.0.5/dist/terraformer-arcgis-parser.min.js"></script>
 
   <script>
-    // Haritayı oluşturuyoruz (başlangıç koordinatları ve zoom ayarı)
-    var map = L.map('map').setView([41, 28], 5);
+    var map = L.map('map').setView([41, 28], 3);
 
-    // Koyu gri altlık haritası: CartoDB Dark Matter kullanılıyor.
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    L.tileLayer('https://{s}.basemaps.cartocdn.com/light_nolabels/{z}/{x}/{y}{r}.png', {
       attribution: '© OpenStreetMap, © CartoDB',
       maxZoom: 19
     }).addTo(map);
 
-    /**
-     * Verilen URL'deki dosyayı yükler.
-     * @param {string} url - Yüklenecek dosyanın URL'si (klasör içindeki dosya adı)
-     * @param {boolean} isArcGISJSON - Dosyanın ArcGIS JSON formatında olup olmadığını belirler.
-     */
-    function loadAndDisplayGeoJSON(url, isArcGISJSON) {
-      fetch(url)
-        .then(response => response.json())
-        .then(data => {
-          var geojsonData;
+    var selectedStyle = { 
+      color: "#dcae0f",
+      weight: 2,
+      fillColor: "#282828",
+      fillOpacity: 0.6
+    };
 
-          // ArcGIS JSON formatında ise, Terraformer ile GeoJSON'a dönüştürelim
-          if (isArcGISJSON) {
-            if (data.layers && data.layers.length > 0 && data.layers[0].features) {
-              geojsonData = {
-                type: "FeatureCollection",
-                features: data.layers[0].features.map(function(feature) {
-                  return Terraformer.ArcGIS.parse(feature);
-                })
-              };
-            } else {
-              console.error("Beklenen ArcGIS JSON formatı bulunamadı:", data);
-              return;
+    var defaultStyle = { 
+      color: "#b47c80",
+      weight: 1,
+      fillColor: "#282828",
+      fillOpacity: 0.6
+    };
+
+    var selectedLayer = null;
+
+    fetch('data.geojson')
+      .then(response => response.json())
+      .then(data => {
+        data.features.forEach(feature => {
+          var countryName = feature.properties.ÜLKE;
+          var description = feature.properties.AÇIKLAMA;
+          var imageUrl = feature.properties.RESİM;
+          var date = feature.properties.TARİH;
+
+          if (!countryName) return;
+
+          // Ülke adı da dahil edilen açıklama HTML
+          var descriptionHTML = `<b>Ülke:</b> ${countryName}<br>`;
+               var tarih = `<b>Tarih:</b> ${date}<br>`;
+          descriptionHTML += description ? `<b>Açıklama:</b> ${description}<br>` : '';
+                    descriptionHTML += date ? `<b>Tarih:</b> ${date}<br>` : ''; // Tarih bilgisi eklendi
+
+          var popupContent = `          
+            ${descriptionHTML}
+            ${imageUrl ? `<img src="${imageUrl}" class="popup-image" alt="Resim">` : ''}          
+          `;
+
+          var countryLayer = L.geoJSON(feature.geometry, {
+            style: defaultStyle
+          }).bindTooltip(countryName, {
+            permanent: true,
+            direction: 'center',
+            className: 'tooltip-style',
+            opacity: 0.7
+          }).bindPopup(popupContent);  // Pop-up bağlama
+
+          // Rusya için tooltip'i yüzdesel olarak sola kaydırma
+          countryLayer.on('tooltipopen', function () {
+            if (countryName === 'RUSYA') {
+              var tooltip = countryLayer.getTooltip();
+              // Tooltip'i yüzdesel olarak konumlandırma
+              var tooltipElement = tooltip.getElement();
+              var mapWidth = map.getSize().x;
+              var mapHeight = map.getSize().y;
+
+              // Kaydırma oranlarını yüzdesel olarak hesaplama
+              tooltipElement.style.left = (mapWidth * -0.05) + 'px'; // %5 sola kaydırma
+              tooltipElement.style.top = (mapHeight * -0.15) + 'px'; // %15 yukarı kaydırma
             }
-          } else {
-            // Dosya zaten GeoJSON formatında
-            geojsonData = data;
-          }
+          });
 
-          // GeoJSON verisini haritaya ekle
-          L.geoJSON(geojsonData, {
-            // Stil ayarları: hafif mavi renk, ince kenar
-            style: function(feature) {
-              return { 
-                color: "#3388ff",  // kenar rengi
-                weight: 1,         // kenar kalınlığı
-                fillColor: "#3388ff",
-                fillOpacity: 0.3   // doldurma opaklığı
-              };
-            },
-            onEachFeature: function(feature, layer) {
-              // Popup içeriğini oluştur: Tüm özellikleri listeleyelim.
-              var popupContent = "";
-              if (feature.properties) {
-                for (var key in feature.properties) {
-                  popupContent += "<strong>" + key + ":</strong> " + feature.properties[key] + "<br/>";
-                }
-              } else {
-                popupContent = "Özellik bulunamadı.";
-              }
-              layer.bindPopup(popupContent);
+          // Ülkeye tıklayınca popup'ı açmak için
+          countryLayer.on('click', function() {
+            if (selectedLayer) {
+              selectedLayer.setStyle(defaultStyle);
             }
-          }).addTo(map);
-        })
-        .catch(error => console.error("Veri yüklenemedi (" + url + "):", error));
-    }
+            countryLayer.setStyle(selectedStyle);
+            selectedLayer = countryLayer;
+            countryLayer.openPopup();  // Popup açma
+          });
 
-    // data.geojson dosyasını yükle (GeoJSON formatında)
-    loadAndDisplayGeoJSON("data.geojson", false);
-
-    // data.json dosyasını yükle (ArcGIS JSON formatında)
-    loadAndDisplayGeoJSON("data.json", true);
-  </script>
-</body>
-</html>
-<!DOCTYPE html>
-<html lang="tr">
-<head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Türkçe Etiketli Koyu Gri Harita</title>
-  <!-- Leaflet CSS -->
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <style>
-    body, html { margin: 0; padding: 0; }
-    #map { width: 100%; height: 100vh; }
-  </style>
-</head>
-<body>
-  <div id="map"></div>
-
-  <!-- Leaflet JS -->
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
-  <!-- Terraformer kütüphaneleri: ArcGIS JSON'u GeoJSON'a dönüştürmek için -->
-  <script src="https://unpkg.com/terraformer@1.0.12/dist/terraformer.min.js"></script>
-  <script src="https://unpkg.com/terraformer-arcgis-parser@1.0.5/dist/terraformer-arcgis-parser.min.js"></script>
-
-  <script>
-    // Haritayı oluşturuyoruz (başlangıç koordinatları ve zoom ayarı)
-    var map = L.map('map').setView([41, 28], 5);
-
-    // MapTiler Dark Matter altlık haritası, Türkçe etiketlerle.
-    // Aşağıdaki URL'de YOUR_MAPTILER_KEY kısmını kendi MapTiler API anahtarınız ile değiştirin.
-    L.tileLayer('https://api.maptiler.com/maps/darkmatter/256/{z}/{x}/{y}.png?key=YOUR_MAPTILER_KEY&lang=tr', {
-      attribution: '© MapTiler © OpenStreetMap contributors',
-      maxZoom: 19
-    }).addTo(map);
-
-    /**
-     * Belirtilen URL'deki dosyayı yükler ve haritada gösterir.
-     * @param {string} url - Yüklenecek dosyanın URL'si (örneğin "data.geojson" veya "data.json")
-     * @param {boolean} isArcGISJSON - Dosyanın ArcGIS JSON formatında olup olmadığını belirtir.
-     */
-    function loadAndDisplayGeoJSON(url, isArcGISJSON) {
-      fetch(url)
-        .then(response => response.json())
-        .then(data => {
-          var geojsonData;
-          if (isArcGISJSON) {
-            // ArcGIS JSON formatı: data.layers[0].features dizisi içinde yer alır.
-            if (data.layers && data.layers.length > 0 && data.layers[0].features) {
-              geojsonData = {
-                type: "FeatureCollection",
-                features: data.layers[0].features.map(function(feature) {
-                  return Terraformer.ArcGIS.parse(feature);
-                })
-              };
-            } else {
-              console.error("Beklenen ArcGIS JSON formatı bulunamadı:", data);
-              return;
-            }
-          } else {
-            // Dosya zaten GeoJSON formatında
-            geojsonData = data;
-          }
-
-          // GeoJSON verisini haritaya ekle
-          L.geoJSON(geojsonData, {
-            // Stil ayarları: hafif mavi, ince kenar ve düşük opaklık
-            style: function(feature) {
-              return { 
-                color: "#3388ff",      // kenar rengi (hafif mavi)
-                weight: 1,             // kenar kalınlığı
-                fillColor: "#3388ff",  
-                fillOpacity: 0.3       // doldurma opaklığı
-              };
-            },
-            onEachFeature: function(feature, layer) {
-              // Popup içeriğini oluştur: Özellikler listesini gösterir.
-              var popupContent = "";
-              if (feature.properties) {
-                for (var key in feature.properties) {
-                  popupContent += "<strong>" + key + ":</strong> " + feature.properties[key] + "<br/>";
-                }
-              } else {
-                popupContent = "Özellik bulunamadı.";
-              }
-              layer.bindPopup(popupContent);
-            }
-          }).addTo(map);
-        })
-        .catch(error => console.error("Veri yüklenemedi (" + url + "):", error));
-    }
-
-    // data.geojson dosyasını (GeoJSON formatında) yükle
-    loadAndDisplayGeoJSON("data.geojson", false);
-    // data.json dosyasını (ArcGIS JSON formatında) yükle
-    loadAndDisplayGeoJSON("data.json", true);
+          countryLayer.addTo(map);
+        });
+      })
+      .catch(error => console.error("Ülke verisi yüklenirken hata oluştu:", error));
   </script>
 </body>
 </html>
